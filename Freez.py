@@ -2,12 +2,105 @@ import subprocess
 import os
 from typing import List, Dict, Any, Iterable
 import json
+from argparse import Namespace
+from abc import ABC, abstractmethod
+
+from config import DATA_DIR, DATA_FILE, OVERRIDE_WORKSPACE
 
 
-class Freez:
+class FreezABC(ABC):
 
     def __init__(self):
-        self.win_man = WinManager()
+        super().__init__()
+        self.win_man: WinManager = WinManager()
+        self._data_dir = DATA_DIR
+        self._data_file = os.path.join(self._data_dir, DATA_FILE)
+
+    def _check_dir(self):
+        if not os.path.exists(self._data_dir):
+            os.makedirs(self._data_dir)
+
+    def _load_data(self) -> Dict:
+        if not os.path.exists(self._data_file):
+            return {}
+        with open(self._data_file, "r") as f:
+            data = json.load(f)
+        return data
+
+    @abstractmethod
+    def run(self, args: Namespace) -> None:
+        pass
+
+
+class Freez(FreezABC):
+
+    def _save_data(self, data: Dict) -> None:
+        with open(self._data_file, "w") as f:
+            json.dump(data, f)
+
+    def _get_executable(self, pid: int) -> str:
+        cmd = ["readlink", "-f", f"/proc/{pid}/exe"]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE)
+        res = res.stdout.decode("utf-8").strip()
+        if "snap" in res:
+            res = res.split(os.path.sep)
+            return res[-1]
+        return res
+
+    def run(self, args: Namespace) -> None:
+        data = self._load_data()
+        windows = self.win_man.get_windows()
+        workspace = {args.name: dict()}
+        cwd = os.getcwd()
+        for idx, win in enumerate(windows):
+            name = f"win{idx}"
+            win_config = dict()
+
+            cls = win["wm_class"]
+            focused = win["focus"]
+            details = self.win_man.get_details(win["id"])
+            pid = details["pid"]
+            executable = self._get_executable(pid)
+            size = (details["width"], details["height"])
+            position = (details["x"], details["y"])
+
+            win_config["size"] = size
+            win_config["position"] = position
+            win_config["executable"] = executable
+            win_config["cwd"] = cwd
+            workspace[args.name][name] = win_config
+        if OVERRIDE_WORKSPACE:
+            data.update(workspace)
+            self._save_data(data)
+
+
+class Ufreez(FreezABC):
+
+    def run(self, args: Namespace) -> None:
+        data = self._load_data()
+        workspace = data.get(args.name)
+        if workspace:
+            for win, config in workspace.items():
+                size = config["size"]
+                position = config["position"]
+                executable = config["executable"]
+                cwd = config["cwd"]
+                self._run_window(executable, cwd, position, size)
+
+    def _run_window(
+        self, executable: str, cwd: str, position: tuple, size: tuple
+    ) -> None:
+        os.chdir(cwd)
+        process = subprocess.Popen([executable])
+        win_id = self.pid_to_id(process.pid)
+        self.win_man.move_resize(win_id, *position, *size)
+
+    def pid_to_id(self, pid: int) -> int:
+        windows = self.win_man.get_windows()
+        for win in windows:
+            if win["pid"] == pid:
+                return win["id"]
+        return None
 
 
 class WinManager:

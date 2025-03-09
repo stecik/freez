@@ -1,0 +1,16 @@
+{
+    "b": {
+        "win0": {
+            "size": [
+                1920,
+                984
+            ],
+            "position": [
+                0,
+                32
+            ],
+            "executable": "/opt/google/chrome/chrome",
+            "cwd": "/home/marek/Programming/projects/freez"
+        }
+    }
+}
