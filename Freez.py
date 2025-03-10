@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Iterable
 import json
 from argparse import Namespace
 from abc import ABC, abstractmethod
+import curses
 
 from config import DATA_DIR, DATA_FILE, OVERRIDE_WORKSPACE
 
@@ -21,11 +22,17 @@ class FreezABC(ABC):
             os.makedirs(self._data_dir)
 
     def _load_data(self) -> Dict:
-        if not os.path.exists(self._data_file):
+        try:
+            if not os.path.exists(self._data_file):
+                return {}
+            with open(self._data_file, "r") as f:
+                data = json.load(f)
+            return data
+        except json.JSONDecodeError as e:
             return {}
-        with open(self._data_file, "r") as f:
-            data = json.load(f)
-        return data
+        except Exception as e:
+            print(e)
+            return {}
 
     @abstractmethod
     def run(self, args: Namespace) -> None:
@@ -34,9 +41,16 @@ class FreezABC(ABC):
 
 class Freez(FreezABC):
 
+    def __init__(self):
+        super().__init__()
+        self._crs_man: CursesManager = CursesManager()
+
     def _save_data(self, data: Dict) -> None:
-        with open(self._data_file, "w") as f:
-            json.dump(data, f)
+        try:
+            with open(self._data_file, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(e)
 
     def _get_executable(self, pid: int) -> str:
         cmd = ["readlink", "-f", f"/proc/{pid}/exe"]
@@ -50,6 +64,8 @@ class Freez(FreezABC):
     def run(self, args: Namespace) -> None:
         data = self._load_data()
         windows = self.win_man.get_windows()
+        if args.manage:
+            windows = self._manage(windows)
         workspace = {args.name: dict()}
         cwd = os.getcwd()
         for idx, win in enumerate(windows):
@@ -68,10 +84,17 @@ class Freez(FreezABC):
             win_config["position"] = position
             win_config["executable"] = executable
             win_config["cwd"] = cwd
+            win_config["extra_cmd"] = ""
             workspace[args.name][name] = win_config
         if OVERRIDE_WORKSPACE:
             data.update(workspace)
             self._save_data(data)
+
+    def _manage(self, windows: List) -> List:
+        selected = [True] * len(windows)
+        items = [win["title"] for win in windows]
+        self._crs_man.run(self._crs_man.menu_select, items, selected)
+        return [win for win, sel in zip(windows, selected) if sel]
 
 
 class Ufreez(FreezABC):
@@ -84,16 +107,18 @@ class Ufreez(FreezABC):
                 size = config["size"]
                 position = config["position"]
                 executable = config["executable"]
+                extra_cmd = config["extra_cmd"]
+                # executable += f" {extra_cmd}"
                 cwd = config["cwd"]
-                self._run_window(executable, cwd, position, size)
+                self._run_window(executable, cwd, position, size, extra_cmd)
 
     def _run_window(
-        self, executable: str, cwd: str, position: tuple, size: tuple
+        self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
     ) -> None:
-        os.chdir(cwd)
-        process = subprocess.Popen([executable])
+        process = subprocess.Popen([executable], cwd=cwd)
+        # process = subprocess.Popen([executable] + extra_cmd.split(), cwd=cwd)
         win_id = self.pid_to_id(process.pid)
-        self.win_man.move_resize(win_id, *position, *size)
+        # self.win_man.move_resize(win_id, *position, *size)
 
     def pid_to_id(self, pid: int) -> int:
         windows = self.win_man.get_windows()
@@ -112,6 +137,7 @@ class WinManager:
         cmd = self._builder.build("List")
         res = subprocess.run(cmd, stdout=subprocess.PIPE)
         win_list = res.stdout.decode("utf-8")
+        print(win_list)
         win_list = self._text_to_iterable(win_list, "[", "]")
         return win_list
 
@@ -223,3 +249,45 @@ class CMD_Builder:
             f"{self._method_location}.{method}",
             *[str(p) for p in params],
         ]
+
+
+class CursesManager:
+
+    def menu_select(self, stdscr, items, selected):
+        curses.use_default_colors()
+        curses.curs_set(0)
+        stdscr.keypad(1)
+        pointer = 0
+
+        while True:
+            stdscr.clear()
+            stdscr.addstr(
+                0, 0, "Use arrow keys to move, SPACE to select, ENTER to confirm"
+            )
+
+            for idx, item in enumerate(items):
+                if idx == pointer:
+                    stdscr.addstr(
+                        idx + 2,
+                        2,
+                        f"{'[x]' if selected[idx] else '[ ]'} {item}",
+                        curses.A_REVERSE,
+                    )
+                else:
+                    stdscr.addstr(
+                        idx + 2, 2, f"{'[x]' if selected[idx] else '[ ]'} {item}"
+                    )
+
+            key = stdscr.getch()
+
+            if key == curses.KEY_UP and pointer > 0:
+                pointer -= 1
+            elif key == curses.KEY_DOWN and pointer < len(items) - 1:
+                pointer += 1
+            elif key == ord(" "):
+                selected[pointer] = not selected[pointer]
+            elif key == 10:  # ENTER key
+                break
+
+    def run(self, func, *args, **kwargs):
+        curses.wrapper(func, *args, **kwargs)

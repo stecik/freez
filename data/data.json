@@ -1,5 +1,5 @@
 {
-    "b": {
+    "test": {
         "win0": {
             "size": [
                 1920,
@@ -9,8 +9,9 @@
                 0,
                 32
             ],
-            "executable": "/opt/google/chrome/chrome",
-            "cwd": "/home/marek/Programming/projects/freez"
+            "executable": "code",
+            "cwd": "/home/marek/Programming/projects/freez",
+            "extra_cmd": ""
         }
     }
 }
