@@ -5,8 +5,11 @@ import json
 from argparse import Namespace
 from abc import ABC, abstractmethod
 import curses
+import time
+import psutil
 
-from config import DATA_DIR, DATA_FILE, OVERRIDE_WORKSPACE
+
+from config import DATA_DIR, DATA_FILE, OVERRIDE, TIMEOUT
 
 
 class FreezABC(ABC):
@@ -44,6 +47,7 @@ class Freez(FreezABC):
     def __init__(self):
         super().__init__()
         self._crs_man: CursesManager = CursesManager()
+        self._exec_parser: ExecParser = ExecParser()
 
     def _save_data(self, data: Dict) -> None:
         try:
@@ -51,15 +55,6 @@ class Freez(FreezABC):
                 json.dump(data, f)
         except Exception as e:
             print(e)
-
-    def _get_executable(self, pid: int) -> str:
-        cmd = ["readlink", "-f", f"/proc/{pid}/exe"]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE)
-        res = res.stdout.decode("utf-8").strip()
-        if "snap" in res:
-            res = res.split(os.path.sep)
-            return res[-1]
-        return res
 
     def run(self, args: Namespace) -> None:
         data = self._load_data()
@@ -76,7 +71,7 @@ class Freez(FreezABC):
             focused = win["focus"]
             details = self.win_man.get_details(win["id"])
             pid = details["pid"]
-            executable = self._get_executable(pid)
+            executable = self._exec_parser.get_exec(pid, cls, win["wm_class_instance"])
             size = (details["width"], details["height"])
             position = (details["x"], details["y"])
 
@@ -86,7 +81,7 @@ class Freez(FreezABC):
             win_config["cwd"] = cwd
             win_config["extra_cmd"] = ""
             workspace[args.name][name] = win_config
-        if OVERRIDE_WORKSPACE:
+        if OVERRIDE:
             data.update(workspace)
             self._save_data(data)
 
@@ -95,6 +90,37 @@ class Freez(FreezABC):
         items = [win["title"] for win in windows]
         self._crs_man.run(self._crs_man.menu_select, items, selected)
         return [win for win, sel in zip(windows, selected) if sel]
+
+
+class ExecParser:
+
+    def get_exec(self, pid: int, wm_cls: str, wm_inst: str) -> str:
+        cmd = ["readlink", "-f", f"/proc/{pid}/exe"]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE)
+        res = res.stdout.decode("utf-8").strip()
+        if "snap" in res:
+            return self._snap(res)
+        elif wm_cls == "Google-chrome":
+            return self._chrome(res, wm_inst)
+        return res
+
+    def _snap(self, res: str) -> str:
+        # handles snap apps
+        res = res.split(os.path.sep)
+        return res[-1]
+
+    def _chrome(self, res, wm_inst: str) -> str:
+        if wm_inst == "google-chrome":
+            # handles regular chrome windows
+            return f"{wm_inst} --new-window"
+        elif "_" in wm_inst:
+            # handles chrome installed apps
+            app_id = wm_inst.split("_")[-1]
+            return f"google-chrome --profile-directory=Default --app-id={app_id}"
+        return res
+
+    def _flatpak(self, res: str) -> str:
+        pass
 
 
 class Ufreez(FreezABC):
@@ -108,24 +134,48 @@ class Ufreez(FreezABC):
                 position = config["position"]
                 executable = config["executable"]
                 extra_cmd = config["extra_cmd"]
-                # executable += f" {extra_cmd}"
                 cwd = config["cwd"]
                 self._run_window(executable, cwd, position, size, extra_cmd)
 
     def _run_window(
         self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
     ) -> None:
-        process = subprocess.Popen([executable], cwd=cwd)
-        # process = subprocess.Popen([executable] + extra_cmd.split(), cwd=cwd)
+        # TODO: fix pid_to_id
+        process = subprocess.Popen(
+            executable.split() + extra_cmd.split(),
+            cwd=cwd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
         win_id = self.pid_to_id(process.pid)
-        # self.win_man.move_resize(win_id, *position, *size)
+        start = time.time()
+        while not win_id and time.time() - start < TIMEOUT:
+            win_id = self.pid_to_id(process.pid)
+            time.sleep(0.2)
+        if win_id:
+            self.win_man.move_resize(win_id, *position, *size)
+        else:
+            print("timeout")
 
     def pid_to_id(self, pid: int) -> int:
+        pids = set([pid] + self._get_child_pids(pid))
         windows = self.win_man.get_windows()
         for win in windows:
-            if win["pid"] == pid:
+            print(win["pid"])
+            print(pids)
+            if win["pid"] in pids:
                 return win["id"]
+        print()
         return None
+
+    def _get_child_pids(self, parent_pid: int) -> List[int]:
+        try:
+            parent = psutil.Process(parent_pid)
+            print(parent)
+            return [child.pid for child in parent.children(recursive=True)]
+        except psutil.NoSuchProcess:
+            return []
 
 
 class WinManager:
@@ -137,7 +187,6 @@ class WinManager:
         cmd = self._builder.build("List")
         res = subprocess.run(cmd, stdout=subprocess.PIPE)
         win_list = res.stdout.decode("utf-8")
-        print(win_list)
         win_list = self._text_to_iterable(win_list, "[", "]")
         return win_list
 

@@ -9,7 +9,7 @@
                 0,
                 32
             ],
-            "executable": "code",
+            "executable": "google-chrome --new-window",
             "cwd": "/home/marek/Programming/projects/freez",
             "extra_cmd": ""
         }
