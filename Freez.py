@@ -1,18 +1,18 @@
 import subprocess
 import os
-from typing import List, Dict, Any, Iterable
+from typing import List, Dict, Iterable, Callable
 import json
 from argparse import Namespace
 from abc import ABC, abstractmethod
 import curses
 import time
 
-from config import DATA_DIR, DATA_FILE, OVERRIDE, TIMEOUT
+from config import DATA_DIR, DATA_FILE, OVERRIDE, TIMEOUT, CLOSE_TERMINAL
 
 
 class FreezABC(ABC):
 
-    devnull = {
+    _devnull = {
         "stdout": subprocess.DEVNULL,
         "stdin": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
@@ -148,7 +148,7 @@ class Freez(FreezABC):
             return True
         return False
 
-    def _manage(self, windows: List) -> List:
+    def _manage(self, windows: List[Dict]) -> List:
         selected = [True] * len(windows)
         items = [win["title"] for win in windows]
         self._crs_man.run(self._crs_man.menu_select, items, selected)
@@ -165,6 +165,8 @@ class ExecParser:
             return self._snap(res)
         elif wm_cls == "Google-chrome":
             return self._chrome(res, wm_inst)
+        elif wm_cls == "org.gnome.Terminal":
+            return "gnome-terminal"
         return res
 
     def _snap(self, res: str) -> str:
@@ -172,7 +174,7 @@ class ExecParser:
         res = res.split(os.path.sep)
         return res[-1]
 
-    def _chrome(self, res, wm_inst: str) -> str:
+    def _chrome(self, res: str, wm_inst: str) -> str:
         if wm_inst == "google-chrome":
             # handles regular chrome windows
             return f"{wm_inst} --new-window"
@@ -189,6 +191,13 @@ class ExecParser:
 class Ufreez(FreezABC):
 
     def run(self, args: Namespace) -> None:
+
+        if self._list(data, args.list):
+            return
+        if self._delete(data, args.delete):
+            return
+
+        terminal_id = self._get_init_terminal_id()
         data = self._load_data()
         workspace = data.get(args.name)
         if workspace:
@@ -199,13 +208,18 @@ class Ufreez(FreezABC):
                 extra_cmd = config["extra_cmd"]
                 cwd = config["cwd"]
                 self._run_window(executable, cwd, position, size, extra_cmd)
+        if CLOSE_TERMINAL and terminal_id:
+            self.win_man.close(terminal_id)
 
     def _run_window(
         self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
     ) -> None:
         windows = self.win_man.get_windows()
         subprocess.Popen(
-            executable.split() + extra_cmd.split(), cwd=cwd, **self.devnull
+            executable.split() + extra_cmd.split(),
+            cwd=cwd,
+            **self._devnull,
+            preexec_fn=os.setsid,
         )
         win_id = self._get_id(windows)
         if win_id:
@@ -230,17 +244,24 @@ class Ufreez(FreezABC):
             return diff[0]
         return None
 
+    def _get_init_terminal_id(self) -> int:
+        windows = self.win_man.get_windows()
+        for win in windows:
+            if win["wm_class"] == "org.gnome.Terminal":
+                return win["id"]
+        return None
+
 
 class WinManager:
 
-    devnull = {
+    _devnull = {
         "stdout": subprocess.DEVNULL,
         "stdin": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
     }
 
     def __init__(self):
-        self._builder = CMD_Builder()
+        self._builder: CMD_Builder = CMD_Builder()
 
     def get_windows(self) -> List[Dict]:
         cmd = self._builder.build("List")
@@ -285,29 +306,24 @@ class WinManager:
 
     def minimize(self, win_id: int) -> None:
         cmd = self._builder.build("Minimize", [win_id])
-        subprocess.run(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-        )
+        subprocess.run(cmd, **self._devnull)
 
     def unminimize(self, win_id: int) -> None:
         cmd = self._builder.build("Unminimize", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self._devnull)
 
     def maximize(self, win_id: int) -> None:
         cmd = self._builder.build("Maximize", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self._devnull)
 
     def unmaximize(self, win_id: int) -> None:
         cmd = self._builder.build("Unmaximize", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self._devnull)
 
     def move(self, win_id: int, x: int, y: int) -> None:
         params = self._get_params([win_id, x, y])
         cmd = self._builder.build("Move", params)
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self._devnull)
 
     def _get_params(self, params: List) -> List:
         negative = False
@@ -321,24 +337,24 @@ class WinManager:
 
     def resize(self, win_id: int, width: int, height: int) -> None:
         cmd = self._builder.build("Resize", [win_id, width, height])
-        subprocess.run(cmd, **self.devnull)
+        subprocess.run(cmd, **self._devnull)
 
     def move_resize(self, win_id: int, x: int, y: int, width: int, height: int) -> None:
         params = self._get_params([win_id, x, y, width, height])
         cmd = self._builder.build("MoveResize", params)
-        subprocess.run(cmd, **self.devnull)
+        subprocess.run(cmd, **self._devnull)
 
     def move_to_workspace(self, win_id: int, workspace_id: int) -> None:
         cmd = self._builder.build("MoveToWorkspace", [win_id, workspace_id])
-        subprocess.run(cmd, **self.devnull)
+        subprocess.run(cmd, **self._devnull)
 
     def activate(self, win_id: int) -> None:
         cmd = self._builder.build("Activate", [win_id])
-        subprocess.run(cmd, **self.devnull)
+        subprocess.run(cmd, **self._devnull)
 
     def close(self, win_id: int) -> None:
         cmd = self._builder.build("Close", [win_id])
-        subprocess.run(cmd, **self.devnull)
+        subprocess.run(cmd, **self._devnull)
 
 
 class CMD_Builder:
@@ -402,5 +418,5 @@ class CursesManager:
             elif key == 10:  # ENTER key
                 break
 
-    def run(self, func, *args, **kwargs):
+    def run(self, func: Callable, *args, **kwargs):
         curses.wrapper(func, *args, **kwargs)

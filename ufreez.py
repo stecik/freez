@@ -1,23 +1,27 @@
 from argparse import ArgumentParser
 from Freez import Ufreez
 
-NAME = "ufreez"
-DESCRIPTION = ""
-EPILOG = ""
+NAME: str = "ufreez"
+DESCRIPTION: str = ""
+EPILOG: str = ""
 
 
 parser = ArgumentParser(prog=NAME, description=DESCRIPTION, epilog=EPILOG)
 
-parser.add_argument("-n", "--name", type=str, help="Unique name of the saved workspace")
+mode_group = parser.add_mutually_exclusive_group()
 
-parser.add_argument(
+mode_group.add_argument(
+    "-n", "--name", type=str, help="Unique name of the saved workspace"
+)
+
+mode_group.add_argument(
     "-l",
     "--list",
     action="store_true",
     help="List all saved workspaces",
 )
 
-parser.add_argument(
+mode_group.add_argument(
     "-d",
     "--delete",
     type=str,

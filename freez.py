@@ -1,53 +1,59 @@
 from Freez import Freez
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 
-NAME = "freez"
-DESCRIPTION = ""
-EPILOG = ""
+NAME: str = "freez"
+DESCRIPTION: str = ""
+EPILOG: str = ""
 
 
-def validate_args(args):
+def validate_args(args: Namespace):
     if args.manage and not args.name:
         raise ValueError("Name is required to save workspace")
 
 
 parser = ArgumentParser(prog=NAME, description=DESCRIPTION, epilog=EPILOG)
 
-parser.add_argument("-n", "--name", type=str, help="Unique name of the saved workspace")
+exit_group = parser.add_mutually_exclusive_group()
+mode_group = parser.add_mutually_exclusive_group()
+
+
+mode_group.add_argument(
+    "-n", "--name", type=str, help="Unique name of the saved workspace"
+)
 
 parser.add_argument(
     "-m", "--manage", action="store_true", help="Select which windows to save"
 )
 
-parser.add_argument(
+exit_group.add_argument(
     "-c",
     "--close",
     action="store_true",
     help="Save the current workspace (if name provided) and close all windows",
 )
 
-parser.add_argument(
+exit_group.add_argument(
     "-s",
     "--shutdown",
     action="store_true",
     help="Save the current workspace (if name provided), close all windows and shutdown the system",
 )
 
-parser.add_argument(
+exit_group.add_argument(
     "-r",
     "--reboot",
     action="store_true",
     help="Save the current workspace (if name provided), close all windows and reboot the system",
 )
 
-parser.add_argument(
+mode_group.add_argument(
     "-l",
     "--list",
     action="store_true",
     help="List all saved workspaces",
 )
 
-parser.add_argument(
+mode_group.add_argument(
     "-d",
     "--delete",
     type=str,
