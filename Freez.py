@@ -6,13 +6,17 @@ from argparse import Namespace
 from abc import ABC, abstractmethod
 import curses
 import time
-import psutil
-
 
 from config import DATA_DIR, DATA_FILE, OVERRIDE, TIMEOUT
 
 
 class FreezABC(ABC):
+
+    devnull = {
+        "stdout": subprocess.DEVNULL,
+        "stdin": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
 
     def __init__(self):
         super().__init__()
@@ -37,6 +41,25 @@ class FreezABC(ABC):
             print(e)
             return {}
 
+    def _list(self, data: Dict, _list: bool) -> bool:
+        if _list:
+            if data:
+                for name in data:
+                    print(name)
+            else:
+                print("No saved workspaces")
+            return True
+        return False
+
+    def _delete(self, data: Dict, names: List[str]) -> bool:
+        if names:
+            for name in names:
+                if name in data.keys():
+                    del data[name]
+            self._save_data(data)
+            return True
+        return False
+
     @abstractmethod
     def run(self, args: Namespace) -> None:
         pass
@@ -58,32 +81,72 @@ class Freez(FreezABC):
 
     def run(self, args: Namespace) -> None:
         data = self._load_data()
+
+        if self._list(data, args.list):
+            return
+        if self._delete(data, args.delete):
+            return
+
         windows = self.win_man.get_windows()
-        if args.manage:
-            windows = self._manage(windows)
-        workspace = {args.name: dict()}
-        cwd = os.getcwd()
-        for idx, win in enumerate(windows):
-            name = f"win{idx}"
-            win_config = dict()
 
-            cls = win["wm_class"]
-            focused = win["focus"]
-            details = self.win_man.get_details(win["id"])
-            pid = details["pid"]
-            executable = self._exec_parser.get_exec(pid, cls, win["wm_class_instance"])
-            size = (details["width"], details["height"])
-            position = (details["x"], details["y"])
+        if args.name:
 
-            win_config["size"] = size
-            win_config["position"] = position
-            win_config["executable"] = executable
-            win_config["cwd"] = cwd
-            win_config["extra_cmd"] = ""
-            workspace[args.name][name] = win_config
-        if OVERRIDE:
-            data.update(workspace)
-            self._save_data(data)
+            if args.manage:
+                windows = self._manage(windows)
+
+            workspace = {args.name: dict()}
+            cwd = os.getcwd()
+            for idx, win in enumerate(windows):
+                name = f"win{idx}"
+                win_config = dict()
+
+                cls = win["wm_class"]
+                details = self.win_man.get_details(win["id"])
+                pid = details["pid"]
+                executable = self._exec_parser.get_exec(
+                    pid, cls, win["wm_class_instance"]
+                )
+                size = (details["width"], details["height"])
+                position = (details["x"], details["y"])
+
+                win_config["size"] = size
+                win_config["position"] = position
+                win_config["executable"] = executable
+                win_config["cwd"] = cwd
+                win_config["extra_cmd"] = ""
+                workspace[args.name][name] = win_config
+
+            if OVERRIDE:
+                data.update(workspace)
+                self._save_data(data)
+
+        if self._close(windows, args.close):
+            return
+
+        if self._reboot(args.reboot):
+            return
+
+        if self._shutdown(args.shutdown):
+            return
+
+    def _close(self, windows: List[Dict], _close: bool) -> None:
+        if _close:
+            for win in windows:
+                self.win_man.close(win["id"])
+            return True
+        return False
+
+    def _reboot(self, _reboot: bool) -> None:
+        if _reboot:
+            subprocess.run(["reboot"])
+            return True
+        return False
+
+    def _shutdown(self, _shutdown: bool) -> None:
+        if _shutdown:
+            subprocess.run(["shutdown", "now", "-h"])
+            return True
+        return False
 
     def _manage(self, windows: List) -> List:
         selected = [True] * len(windows)
@@ -140,45 +203,41 @@ class Ufreez(FreezABC):
     def _run_window(
         self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
     ) -> None:
-        # TODO: fix pid_to_id
-        process = subprocess.Popen(
-            executable.split() + extra_cmd.split(),
-            cwd=cwd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
+        windows = self.win_man.get_windows()
+        subprocess.Popen(
+            executable.split() + extra_cmd.split(), cwd=cwd, **self.devnull
         )
-        win_id = self.pid_to_id(process.pid)
-        start = time.time()
-        while not win_id and time.time() - start < TIMEOUT:
-            win_id = self.pid_to_id(process.pid)
-            time.sleep(0.2)
+        win_id = self._get_id(windows)
         if win_id:
             self.win_man.move_resize(win_id, *position, *size)
-        else:
-            print("timeout")
 
-    def pid_to_id(self, pid: int) -> int:
-        pids = set([pid] + self._get_child_pids(pid))
-        windows = self.win_man.get_windows()
-        for win in windows:
-            print(win["pid"])
-            print(pids)
-            if win["pid"] in pids:
-                return win["id"]
-        print()
+    def _get_id(self, windows: List[Dict]) -> int:
+        start = time.time()
+        win_id = None
+        while not win_id and time.time() - start < TIMEOUT:
+            new_windows = self.win_man.get_windows()
+            if len(new_windows) != len(windows):
+                win_id = self._get_new_id(windows, new_windows)
+            else:
+                time.sleep(0.1)
+        return win_id
+
+    def _get_new_id(self, old: List[Dict], new: List[Dict]) -> int:
+        old_ids = [win["id"] for win in old]
+        new_ids = [win["id"] for win in new]
+        diff = list(set(new_ids) - set(old_ids))
+        if diff:
+            return diff[0]
         return None
-
-    def _get_child_pids(self, parent_pid: int) -> List[int]:
-        try:
-            parent = psutil.Process(parent_pid)
-            print(parent)
-            return [child.pid for child in parent.children(recursive=True)]
-        except psutil.NoSuchProcess:
-            return []
 
 
 class WinManager:
+
+    devnull = {
+        "stdout": subprocess.DEVNULL,
+        "stdin": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
 
     def __init__(self):
         self._builder = CMD_Builder()
@@ -226,7 +285,12 @@ class WinManager:
 
     def minimize(self, win_id: int) -> None:
         cmd = self._builder.build("Minimize", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
 
     def unminimize(self, win_id: int) -> None:
         cmd = self._builder.build("Unminimize", [win_id])
@@ -257,24 +321,24 @@ class WinManager:
 
     def resize(self, win_id: int, width: int, height: int) -> None:
         cmd = self._builder.build("Resize", [win_id, width, height])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self.devnull)
 
     def move_resize(self, win_id: int, x: int, y: int, width: int, height: int) -> None:
         params = self._get_params([win_id, x, y, width, height])
         cmd = self._builder.build("MoveResize", params)
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self.devnull)
 
     def move_to_workspace(self, win_id: int, workspace_id: int) -> None:
         cmd = self._builder.build("MoveToWorkspace", [win_id, workspace_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self.devnull)
 
     def activate(self, win_id: int) -> None:
         cmd = self._builder.build("Activate", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self.devnull)
 
     def close(self, win_id: int) -> None:
         cmd = self._builder.build("Close", [win_id])
-        subprocess.run(cmd)
+        subprocess.run(cmd, **self.devnull)
 
 
 class CMD_Builder:

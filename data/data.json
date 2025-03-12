@@ -1,17 +1,1 @@
-{
-    "test": {
-        "win0": {
-            "size": [
-                1920,
-                984
-            ],
-            "position": [
-                0,
-                32
-            ],
-            "executable": "google-chrome --new-window",
-            "cwd": "/home/marek/Programming/projects/freez",
-            "extra_cmd": ""
-        }
-    }
-}
+{"test": {"win0": {"size": [1920, 984], "position": [0, 32], "executable": "google-chrome --profile-directory=Default --app-id=cadlkienfkclaiaibeoongdcgmdikeeg", "cwd": "/home/marek/Programming/projects/freez", "extra_cmd": ""}, "win1": {"size": [1920, 984], "position": [0, 32], "executable": "google-chrome --new-window", "cwd": "/home/marek/Programming/projects/freez", "extra_cmd": ""}, "win2": {"size": [1920, 984], "position": [0, 32], "executable": "code", "cwd": "/home/marek/Programming/projects/freez", "extra_cmd": ""}}}
