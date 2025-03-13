@@ -1,5 +1,6 @@
 import subprocess
 import os
+import sys
 from typing import List, Dict, Iterable, Callable
 import json
 from argparse import Namespace
@@ -81,51 +82,17 @@ class Freez(FreezABC):
 
     def run(self, args: Namespace) -> None:
         data = self._load_data()
-
         if self._list(data, args.list):
             return
         if self._delete(data, args.delete):
             return
 
         windows = self.win_man.get_windows()
-
         if args.name:
-
             if args.manage:
                 windows = self._manage(windows)
-
-            workspace = {args.name: dict()}
-            cwd = os.getcwd()
-            for idx, win in enumerate(windows):
-                name = f"win{idx}"
-                win_config = dict()
-
-                cls = win["wm_class"]
-                details = self.win_man.get_details(win["id"])
-                pid = details["pid"]
-                executable = self._exec_parser.get_exec(
-                    pid, cls, win["wm_class_instance"]
-                )
-                size = (details["width"], details["height"])
-                position = (details["x"], details["y"])
-
-                win_config["size"] = size
-                win_config["position"] = position
-                win_config["executable"] = executable
-                win_config["cwd"] = cwd
-                win_config["extra_cmd"] = ""
-                workspace[args.name][name] = win_config
-
-            if not OVERWRITE:
-                selected = [False]
-                msg = f"'{args.name}' exists. Do you want to overwrite it?"
-                self._crs_man.run(self._crs_man.confirm_menu, msg, selected)
-                if selected[0]:
-                    data.update(workspace)
-                    self._save_data(data)
-            else:
-                data.update(workspace)
-                self._save_data(data)
+            workspace = self._get_workspace(args.name, windows)
+            self._save(args.name, data, workspace)
 
         if self._close(windows, args.close):
             return
@@ -135,6 +102,40 @@ class Freez(FreezABC):
 
         if self._shutdown(args.shutdown):
             return
+
+    def _get_workspace(self, workspace_name: str, windows: List) -> Dict:
+        workspace = {workspace_name: dict()}
+        cwd = os.getcwd()
+        for idx, win in enumerate(windows):
+            name = f"win{idx}"
+            win_config = dict()
+
+            cls = win["wm_class"]
+            details = self.win_man.get_details(win["id"])
+            pid = details["pid"]
+            executable = self._exec_parser.get_exec(pid, cls, win["wm_class_instance"])
+            size = (details["width"], details["height"])
+            position = (details["x"], details["y"])
+
+            win_config["size"] = size
+            win_config["position"] = position
+            win_config["executable"] = executable
+            win_config["cwd"] = cwd
+            win_config["extra_cmd"] = ""
+            workspace[workspace_name][name] = win_config
+
+        return workspace
+
+    def _save(self, name: str, data: Dict, workspace: Dict) -> None:
+        if not OVERWRITE:
+            selected = [False]
+            msg = f"'{name}' exists. Do you want to overwrite it?"
+            self._crs_man.run(self._crs_man.confirm_menu, msg, selected)
+            if not selected[0]:
+                return
+
+        data.update(workspace)
+        self._save_data(data)
 
     def _close(self, windows: List[Dict], _close: bool) -> None:
         if _close:
@@ -168,6 +169,7 @@ class ExecParser:
         cmd = ["readlink", "-f", f"/proc/{pid}/exe"]
         res = subprocess.run(cmd, stdout=subprocess.PIPE)
         res = res.stdout.decode("utf-8").strip()
+
         if "snap" in res:
             return self._snap(res)
         elif wm_cls == "Google-chrome":
@@ -199,10 +201,8 @@ class Ufreez(FreezABC):
 
     def run(self, args: Namespace) -> None:
         data = self._load_data()
-
         if self._list(data, args.list):
             return
-
         if self._delete(data, args.delete):
             return
 
@@ -222,14 +222,16 @@ class Ufreez(FreezABC):
     def _run_window(
         self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
     ) -> None:
+        # TODO: _get_id not working for init terminal fix it!!!
         windows = self.win_man.get_windows()
         subprocess.Popen(
             executable.split() + extra_cmd.split(),
+            start_new_session=True,
             cwd=cwd,
             **self._devnull,
-            preexec_fn=os.setsid,
         )
         win_id = self._get_id(windows)
+        print(win_id)
         if win_id:
             self.win_man.move_resize(win_id, *position, *size)
 
