@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import curses
 import time
 
-from config import DATA_DIR, DATA_FILE, OVERRIDE, TIMEOUT, CLOSE_TERMINAL
+from config import DATA_DIR, DATA_FILE, OVERWRITE, TIMEOUT, CLOSE_TERMINAL
 
 
 class FreezABC(ABC):
@@ -116,7 +116,14 @@ class Freez(FreezABC):
                 win_config["extra_cmd"] = ""
                 workspace[args.name][name] = win_config
 
-            if OVERRIDE:
+            if not OVERWRITE:
+                selected = [False]
+                msg = f"'{args.name}' exists. Do you want to overwrite it?"
+                self._crs_man.run(self._crs_man.confirm_menu, msg, selected)
+                if selected[0]:
+                    data.update(workspace)
+                    self._save_data(data)
+            else:
                 data.update(workspace)
                 self._save_data(data)
 
@@ -191,14 +198,15 @@ class ExecParser:
 class Ufreez(FreezABC):
 
     def run(self, args: Namespace) -> None:
+        data = self._load_data()
 
         if self._list(data, args.list):
             return
+
         if self._delete(data, args.delete):
             return
 
         terminal_id = self._get_init_terminal_id()
-        data = self._load_data()
         workspace = data.get(args.name)
         if workspace:
             for win, config in workspace.items():
@@ -382,37 +390,84 @@ class CMD_Builder:
 
 class CursesManager:
 
-    def menu_select(self, stdscr, items, selected):
+    def confirm_menu(self, stdscr, message, selected):
+        lines, cols = curses.LINES, curses.COLS
         curses.use_default_colors()
         curses.curs_set(0)
-        stdscr.keypad(1)
-        pointer = 0
+        options = ["Yes", "No"]
+        option = True
+        max_len = len(message)
+        h = 6
+        w = max_len
+        y = lines // 2 - h // 2
+        x = cols // 2 - w // 2
+        win = curses.newwin(h, w, y, x)
+        win.keypad(1)
 
         while True:
-            stdscr.clear()
-            stdscr.addstr(
-                0, 0, "Use arrow keys to move, SPACE to select, ENTER to confirm"
+            win.clear()
+            win.addstr(0, 0, message)
+            win.addstr(
+                4, max_len // 2 - 4, options[0], curses.A_REVERSE if option else 0
             )
+            win.addstr(
+                4, max_len // 2 + 4, options[1], curses.A_REVERSE if not option else 0
+            )
+
+            key = win.getch()
+
+            if key == curses.KEY_LEFT or key == curses.KEY_RIGHT:
+                option = not option
+            elif key == 10:  # ENTER key
+                selected[0] = option
+                break
+
+    def menu_select(self, stdsrc, items, selected):
+        lines, cols = curses.LINES, curses.COLS
+        curses.use_default_colors()
+        curses.curs_set(0)
+
+        pointer = 0
+        key_hint = "Select with SPACE, confirm with ENTER"
+        max_len = max([len(item) for item in items] + [len(key_hint)]) + 10
+        h = len(items) + 5
+        w = max_len
+        y = lines // 2 - h // 2
+        x = cols // 2 - w // 2
+        win = curses.newwin(h, w, y, x)
+        win.keypad(1)
+
+        while True:
+            win.clear()
+            win.addstr(0, 0, key_hint)
 
             for idx, item in enumerate(items):
                 if idx == pointer:
-                    stdscr.addstr(
+                    win.addstr(
                         idx + 2,
                         2,
                         f"{'[x]' if selected[idx] else '[ ]'} {item}",
                         curses.A_REVERSE,
                     )
                 else:
-                    stdscr.addstr(
-                        idx + 2, 2, f"{'[x]' if selected[idx] else '[ ]'} {item}"
+                    win.addstr(
+                        idx + 2,
+                        2,
+                        f"{'[x]' if selected[idx] else '[ ]'} {item}",
                     )
 
-            key = stdscr.getch()
+            key = win.getch()
 
-            if key == curses.KEY_UP and pointer > 0:
-                pointer -= 1
-            elif key == curses.KEY_DOWN and pointer < len(items) - 1:
-                pointer += 1
+            if key == curses.KEY_UP:
+                if pointer > 0:
+                    pointer -= 1
+                else:
+                    pointer = len(items) - 1
+            elif key == curses.KEY_DOWN:
+                if pointer < len(items) - 1:
+                    pointer += 1
+                else:
+                    pointer = 0
             elif key == ord(" "):
                 selected[pointer] = not selected[pointer]
             elif key == 10:  # ENTER key
