@@ -15,25 +15,26 @@
 ## Installation
 
 1. Prerequisites
-  - This tool is meant for Ubuntu systems using Wayland
+  - This tool is meant for Ubuntu using Wayland
   - [Window Calls](https://extensions.gnome.org/extension/4724/window-calls/) extension for GNOME
   - Python 3.13
 
 2. Clone the repository:
    ```sh
-   git clone https://github.com/yourusername/freez.git
+   git clone https://github.com/yourusername/freez.git freez
    cd freez
    ```
+   
 3. Install dependencies
-  ```sh
-  sudo apt install pipx
-  pipx install poetry
-  poetry install
-  ```
+   ```sh
+   sudo apt install pipx
+   pipx install poetry
+   poetry install
+   ```
 4. Run
-  ```sh
-  python freez.py -h
-  python ufreez.py -h
-  ```
+   ```sh
+   python freez.py -h
+   python ufreez.py -h
+   ```
 
 ## Run without python
