@@ -38,7 +38,12 @@
    ```
 
 ## Run without python
+   ```sh
+   pip install pyinstaller
+   pyinstaller --onefile freez.py
+   pyinstaller --onefile ufreez.py
+   ```
 
 
 # Licence
-Feel free to use/edit my software in any way possible for non-commercial purposes.
+Feel free to use/edit my software in any way possible for __tnon-commercial__ purposes.
