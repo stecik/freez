@@ -18,6 +18,7 @@
   - This tool is meant for Ubuntu using Wayland
   - [Window Calls](https://extensions.gnome.org/extension/4724/window-calls/) extension for GNOME
   - Python 3.13
+  - git
 
 2. Clone the repository:
    ```sh
