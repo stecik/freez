@@ -17,7 +17,7 @@
 1. Prerequisites
   - This tool is meant for Ubuntu systems using Wayland
   - [Window Calls](https://extensions.gnome.org/extension/4724/window-calls/) extension for GNOME
-  - Python 3.12
+  - Python 3.13
 
 2. Clone the repository:
    ```sh
@@ -30,4 +30,10 @@
   pipx install poetry
   poetry install
   ```
-3 
+4. Run
+  ```sh
+  python freez.py -h
+  python ufreez.py -h
+  ```
+
+## Run without python
