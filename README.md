@@ -43,6 +43,9 @@
    pip install pyinstaller
    pyinstaller --onefile freez.py
    pyinstaller --onefile ufreez.py
+   cp dist/* /usr/bin
+   freez -h
+   ufreez -h
    ```
 
 
