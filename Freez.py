@@ -8,7 +8,14 @@ from abc import ABC, abstractmethod
 import curses
 import time
 
-from config import DATA_DIR, DATA_FILE, OVERWRITE, TIMEOUT, CLOSE_TERMINAL
+from config import (
+    DATA_DIR,
+    DATA_FILE,
+    OVERWRITE,
+    TIMEOUT,
+    CLOSE_TERMINAL,
+    NEW_TERM_IN_TAB,
+)
 
 
 class FreezABC(ABC):
@@ -116,7 +123,7 @@ class Freez(FreezABC):
             executable = self._exec_parser.get_exec(pid, cls, win["wm_class_instance"])
             size = (details["width"], details["height"])
             position = (details["x"], details["y"])
-
+            win_config["wm_class"] = cls
             win_config["size"] = size
             win_config["position"] = position
             win_config["executable"] = executable
@@ -175,7 +182,7 @@ class ExecParser:
         elif wm_cls == "Google-chrome":
             return self._chrome(res, wm_inst)
         elif wm_cls == "org.gnome.Terminal":
-            return "gnome-terminal"
+            return self._gnome_terminal()
         return res
 
     def _snap(self, res: str) -> str:
@@ -193,11 +200,20 @@ class ExecParser:
             return f"google-chrome --profile-directory=Default --app-id={app_id}"
         return res
 
+    def _gnome_terminal(self) -> str:
+        if NEW_TERM_IN_TAB:
+            return "gnome-terminal --tab"
+        return "gnome-terminal"
+
     def _flatpak(self, res: str) -> str:
         pass
 
 
 class Ufreez(FreezABC):
+
+    def __init__(self):
+        super().__init__()
+        self._init_term_id = self._get_init_terminal_id()
 
     def run(self, args: Namespace) -> None:
         data = self._load_data()
@@ -206,7 +222,6 @@ class Ufreez(FreezABC):
         if self._delete(data, args.delete):
             return
 
-        terminal_id = self._get_init_terminal_id()
         workspace = data.get(args.name)
         if workspace:
             for win, config in workspace.items():
@@ -215,14 +230,20 @@ class Ufreez(FreezABC):
                 executable = config["executable"]
                 extra_cmd = config["extra_cmd"]
                 cwd = config["cwd"]
-                self._run_window(executable, cwd, position, size, extra_cmd)
-        if CLOSE_TERMINAL and terminal_id:
-            self.win_man.close(terminal_id)
+                cls = config["wm_class"]
+                self._run_window(executable, cwd, position, size, extra_cmd, cls)
+        if CLOSE_TERMINAL and self._init_term_id:
+            self.win_man.close(self._init_term_id)
 
     def _run_window(
-        self, executable: str, cwd: str, position: tuple, size: tuple, extra_cmd: str
+        self,
+        executable: str,
+        cwd: str,
+        position: tuple,
+        size: tuple,
+        extra_cmd: str,
+        cls: str,
     ) -> None:
-        # TODO: _get_id not working for init terminal fix it!!!
         windows = self.win_man.get_windows()
         subprocess.Popen(
             executable.split() + extra_cmd.split(),
@@ -230,8 +251,11 @@ class Ufreez(FreezABC):
             cwd=cwd,
             **self._devnull,
         )
-        win_id = self._get_id(windows)
-        print(win_id)
+        if NEW_TERM_IN_TAB and cls == "org.gnome.Terminal":
+            win_id = self._init_term_id
+        else:
+            win_id = self._get_id(windows)
+
         if win_id:
             self.win_man.move_resize(win_id, *position, *size)
 

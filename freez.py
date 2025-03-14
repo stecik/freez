@@ -2,8 +2,23 @@ from Freez import Freez
 from argparse import ArgumentParser, Namespace
 
 NAME: str = "freez"
-DESCRIPTION: str = ""
-EPILOG: str = ""
+DESCRIPTION: str = (
+    "A command-line tool to manage and restore workspaces by saving and reopening windows. "
+    "Allows users to save, list, delete, and manage workspace states with additional options "
+    "to close, reboot, or shut down the system while preserving workspaces."
+    "freez can be customized in the config.py file."
+)
+EPILOG: str = (
+    "Examples:"
+    "  Save a workspace (all open windows):       freez -n my_workspace || "
+    "  Save a workspace with window selection:    freez -mn my_workspace || "
+    "  List saved workspaces:                     freez -l || "
+    "  Delete a workspace:                        freez -d my_workspace || "
+    "  Save workspace and close all windows:      freez -cn my_workspace || "
+    "  Shutdown after saving:                     freez -sn my_workspace || "
+    "  Reboot after saving:                       freez -rn my_workspace || "
+    "For more details, refer to the documentation or use -h for help."
+)
 
 
 def validate_args(args: Namespace):

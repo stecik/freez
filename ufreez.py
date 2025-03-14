@@ -2,8 +2,19 @@ from argparse import ArgumentParser
 from Freez import Ufreez
 
 NAME: str = "ufreez"
-DESCRIPTION: str = ""
-EPILOG: str = ""
+DESCRIPTION: str = (
+    "A command-line utility to restore previously saved workspaces using 'freez'."
+    "Allows users to reopen saved window sessions, list available workspace snapshots, "
+    "or delete them when no longer needed."
+    "ufreez can be customized in the config.py file."
+)
+EPILOG: str = (
+    "Examples:"
+    "  Reopen a saved workspace:             ufreez -n my_workspace || "
+    "  List all saved workspaces:            ufreez -l || "
+    "  Delete a saved workspace:             ufreez -d my_workspace || "
+    "For more details, refer to the documentation or use -h for help. || "
+)
 
 
 parser = ArgumentParser(prog=NAME, description=DESCRIPTION, epilog=EPILOG)
