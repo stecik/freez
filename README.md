@@ -22,7 +22,7 @@
 
 2. Clone the repository:
    ```sh
-   git clone https://github.com/yourusername/freez.git freez
+   git clone https://github.com/stecik/freez.git freez
    cd freez
    ```
    
