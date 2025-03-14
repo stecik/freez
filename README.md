@@ -38,3 +38,7 @@
    ```
 
 ## Run without python
+
+
+# Licence
+Feel free to use/edit my software in any way possible for non-commercial purposes.
