@@ -47,7 +47,8 @@
    freez -h
    ufreez -h
    ```
-
+## Tips
+- the data.json file is located in /home/$USER/.freez - you can edit the saved workspaces there
 
 # Licence
 Feel free to use/edit my software in any way possible for __non-commercial__ purposes.
