@@ -36,6 +36,13 @@ class FreezABC(ABC):
         if not os.path.exists(self._data_dir):
             os.makedirs(self._data_dir)
 
+    def _save_data(self, data: Dict) -> None:
+        try:
+            with open(self._data_file, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(e)
+
     def _load_data(self) -> Dict:
         try:
             if not os.path.exists(self._data_file):
@@ -80,13 +87,6 @@ class Freez(FreezABC):
         self._crs_man: CursesManager = CursesManager()
         self._exec_parser: ExecParser = ExecParser()
 
-    def _save_data(self, data: Dict) -> None:
-        try:
-            with open(self._data_file, "w") as f:
-                json.dump(data, f)
-        except Exception as e:
-            print(e)
-
     def run(self, args: Namespace) -> None:
         data = self._load_data()
         if self._list(data, args.list):
@@ -122,10 +122,12 @@ class Freez(FreezABC):
             pid = details["pid"]
             executable = self._exec_parser.get_exec(pid, cls, win["wm_class_instance"])
             size = (details["width"], details["height"])
+            maximized = bool(int(details["maximized"]))
             position = (details["x"], details["y"])
             win_config["wm_class"] = cls
             win_config["size"] = size
             win_config["position"] = position
+            win_config["maximized"] = maximized
             win_config["executable"] = executable
             win_config["cwd"] = cwd
             win_config["extra_cmd"] = ""
@@ -227,11 +229,14 @@ class Ufreez(FreezABC):
             for win, config in workspace.items():
                 size = config["size"]
                 position = config["position"]
+                maximized = config["maximized"]
                 executable = config["executable"]
                 extra_cmd = config["extra_cmd"]
                 cwd = config["cwd"]
                 cls = config["wm_class"]
-                self._run_window(executable, cwd, position, size, extra_cmd, cls)
+                self._run_window(
+                    executable, cwd, position, size, maximized, extra_cmd, cls
+                )
         if CLOSE_TERMINAL and self._init_term_id:
             self.win_man.close(self._init_term_id)
 
@@ -241,6 +246,7 @@ class Ufreez(FreezABC):
         cwd: str,
         position: tuple,
         size: tuple,
+        maximized: bool,
         extra_cmd: str,
         cls: str,
     ) -> None:
@@ -255,9 +261,10 @@ class Ufreez(FreezABC):
             win_id = self._init_term_id
         else:
             win_id = self._get_id(windows)
-
         if win_id:
             self.win_man.move_resize(win_id, *position, *size)
+            if maximized:
+                self.win_man.maximize(win_id)
 
     def _get_id(self, windows: List[Dict]) -> int:
         start = time.time()
