@@ -50,4 +50,4 @@
 
 
 # Licence
-Feel free to use/edit my software in any way possible for __tnon-commercial__ purposes.
+Feel free to use/edit my software in any way possible for __non-commercial__ purposes.
